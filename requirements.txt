@@ -13,3 +13,6 @@ prompt_toolkit==3.0.39
 tiktoken==0.8.0
 streamlit==1.42.0
 streamlit-ace==0.1.1
+mysql-connector-python==8.0.28
+PyMySQL==1.1.1
+pyodbc==5.2.0
