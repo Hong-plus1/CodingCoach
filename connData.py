@@ -4,9 +4,9 @@ import streamlit as st
 def connect_to_db():
     try:
         conn = pymysql.connect(
-            host="172.16.0.0/12",
+            host="localhost",
             user="root",
-            password="Hjy879137267",
+            password="root",
             database="codecoach"
         )
         return conn
