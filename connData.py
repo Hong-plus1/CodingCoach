@@ -1,12 +1,16 @@
 import pymysql
 import streamlit as st
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 
 def connect_to_db():
     try:
         conn = pymysql.connect(
-            host="localhost",
-            user="root",
-            password="root",
+            host=os.getenv(DB_HOST),
+            user=os.getenv(DB_USERNAME),
+            password=os.getenv(DB_PASSWORD),
             database="codecoach"
         )
         return conn
