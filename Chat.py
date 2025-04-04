@@ -22,7 +22,7 @@ def get_latest_dialogue():
         cursor = conn.cursor()
         try:
             # 查询当前用户的最新对话
-            cursor.execute("SELECT dialogueId FROM dialogue WHERE userid=%s ORDER BY DialogueTimestamp DESC LIMIT 1", (st.session_state.userid,))
+            cursor.execute("SELECT dialogueId FROM dialogue WHERE userid=%s ORDER BY DialogueTimestamp DESC LIMIT 1", (st.session_state.userid,))# 从dialogue数据表按照时间戳降序排列，获取最新的对话
             result = cursor.fetchone()
             return result[0] if result else None
         except MySQLError as err:
@@ -112,6 +112,7 @@ def chat_coach(question,code):
 # 初始化 session_state
 if "dialogue_id" not in st.session_state:
     st.session_state.dialogue_id = get_latest_dialogue()  # 获取最新对话 ID
+    print(st.session_state.dialogue_id)
 
 if "messages" not in st.session_state:
     if st.session_state.dialogue_id:
@@ -131,7 +132,7 @@ user_input = st.chat_input(placeholder='请输入提问内容')
 if user_input:
     st.chat_message('human').write(user_input)
     save_message("user", user_input, st.session_state.dialogue_id)
-    st.session_state.messages.append({"role": "user", "content": user_input, 'id': len(st.session_state.messages),"did":0})
+    st.session_state.messages.append({"role": "user", "content": user_input})
     
     with st.chat_message('ai'):
         # 会在界面上显示中间步骤，如搜索、思考等，但只限当前提问
@@ -142,7 +143,7 @@ if user_input:
         response = chat_coach(user_input, code)
         st.write(response)
         save_message("assistant",response,st.session_state.dialogue_id)
-        st.session_state.messages.append({"role": "assistant", "content": response, 'id': len(st.session_state.messages), 'did': 0})
+        st.session_state.messages.append({"role": "assistant", "content": response})
 
 if st.button("开启新一轮对话"):
     # 实例化 ConversationSummaryMemory
@@ -153,11 +154,10 @@ if st.button("开启新一轮对话"):
     )
     
     for message in st.session_state.messages:
-        if message["did"] == 0:
-            if message["role"] == "user":
-                user_summ=message["content"]
-            elif message["role"] == "assistant":
-                summary_memory.save_context({"input": user_summ}, {"output": message["content"]})
+        if message["role"] == "user":
+            user_summ=message["content"]
+        elif message["role"] == "assistant":
+            summary_memory.save_context({"input": user_summ}, {"output": message["content"]})
 
 
     dialogueContent=summary_memory.load_memory_variables({"max_length": 200}) # 从数据库加载历史数据
