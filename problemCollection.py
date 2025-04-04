@@ -11,8 +11,8 @@ def save_problem(problem_type, content, knowledge_point="", annotation=""):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "INSERT INTO problems (type, content, knowledge_point, annotation) VALUES (%s, %s, %s, %s)",
-                  (problem_type, content, knowledge_point, annotation)
+                "INSERT INTO problems (type, content, knowledge_point, annotation, userid) VALUES (%s, %s, %s, %s, %s)",
+                  (problem_type, content, knowledge_point, annotation,st.session_state.userid)
             )
             conn.commit()
             st.success("题目保存成功！")
@@ -29,8 +29,8 @@ def update_problem(id, content, annotation, knowledge_point=""):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "UPDATE problems SET content=%s, annotation=%s, knowledge_point=%s WHERE id=%s",
-                (content, annotation, knowledge_point, id)
+                "UPDATE problems SET content=%s, annotation=%s, knowledge_point=%s WHERE id=%s and userid=%s",
+                (content, annotation, knowledge_point, id, st.session_state.userid)
             )
             conn.commit()
             st.success("题目更新成功！")
@@ -46,7 +46,7 @@ def delete_problem(id):
     if conn:
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM problems WHERE id=%s", (id,))
+            cursor.execute("DELETE FROM problems WHERE id=%s and userid=%s", (id,st.session_state.userid))
             conn.commit()
             st.success("题目删除成功！")
         except MySQLError as err:
@@ -61,8 +61,8 @@ def load_problems(problem_type):
     if conn:
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT content,annotation,knowledge_point,id FROM problems WHERE type=%s", 
-                           (problem_type,)
+            cursor.execute("SELECT content,annotation,knowledge_point,id FROM problems WHERE type=%s and userid=%s", 
+                           (problem_type,st.session_state.userid)   
             )
             problems = cursor.fetchall()
             return problems
@@ -132,7 +132,7 @@ def wrongCollection():
             st.info(problem[0])
             st.write(f"批注 {i + 1}:")
             st.info(problem[1])
-            col1, col2 = st.columns(2)
+            col1, col2, col3= st.columns(3)
             with col1:
                 if st.button(f"编辑题目 {i + 1}"):
                     st.session_state[f"edit_mode_{i}"] = True
@@ -140,6 +140,10 @@ def wrongCollection():
             with col2:
                 if st.button(f"删除题目 {i + 1}"):
                     delete_problem(problem[3])
+                    st.rerun()
+            with col3:
+                if st.button(f"再次练习 {i + 1}"):
+                    st.session_state['problem'] = problem[0]
                     st.rerun()
 
 def FavCollection():
@@ -160,7 +164,7 @@ def FavCollection():
                 st.text_area(f"题目 {i + 1}", value=problem[0], height=None, key=f"favorite_problem_{problem[3]}_{i}")
                 st.text_area(f"批注 {i + 1}", value=problem[1], key=f"favorite_annotation_{problem[3]}_{i}")
                 st.text_area(f"知识点 {i + 1}", value=problem[2], key=f"knowledge_point_{problem[3]}_{i}")
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     if st.button(f"更新题目 {knowid}_{i + 1}"):
                         update_problem(problem[3], st.session_state[f"favorite_problem_{problem[3]}_{i}"], st.session_state.get(f"favorite_annotation_{problem[3]}_{i}", ""), st.session_state.get(f"knowledge_point_{problem[3]}_{i}", ""))
@@ -169,6 +173,10 @@ def FavCollection():
                 with col2:
                     if st.button(f"取消编辑 {knowid}_{i + 1}"):
                         st.session_state[f"edit_mode_{i}"] = False
+                        st.rerun()
+                with col3:
+                    if st.button(f"再次练习 {i + 1}"):
+                        st.session_state['problem'] = problem[0]
                         st.rerun()
 
             else:
