@@ -4,7 +4,6 @@
 import streamlit as st
 
 from DeepSeekLLM import DeepSeekLLM
-from langchain_openai import ChatOpenAI
 from langchain.memory import (ConversationBufferMemory,ConversationSummaryMemory)
 from langchain.prompts import (ChatPromptTemplate,HumanMessagePromptTemplate,MessagesPlaceholder,SystemMessagePromptTemplate,PromptTemplate)
 from langchain_core.output_parsers import StrOutputParser
@@ -16,12 +15,45 @@ from pymysql import MySQLError
 # 加载环境变量
 load_dotenv()
 
+# 获取用户的最新对话
+def get_latest_dialogue():
+    conn = connect_to_db()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            # 查询当前用户的最新对话
+            cursor.execute("SELECT dialogueId FROM dialogue WHERE userid=%s ORDER BY DialogueTimestamp DESC LIMIT 1", (st.session_state.userid,))
+            result = cursor.fetchone()
+            return result[0] if result else None
+        except MySQLError as err:
+            st.error(f"加载最新对话失败: {err}")
+        finally:
+            cursor.close()
+            conn.close()
+    return None
+
+def load_messages(dialogue_id):
+    conn = connect_to_db()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT ChatRole, ChatContent FROM messages WHERE userid=%s AND DialogueId=%s ORDER BY timestamp ASC",(st.session_state.userid,dialogue_id))
+            messages = cursor.fetchall()
+            return [{"role": role, "content": content} for role, content in messages]
+        except MySQLError as err:
+            st.error(f"消息加载失败: {err}")
+            return []
+        finally:
+            cursor.close()
+            conn.close()
+    return []
+# 需要返回吗
 def save_dialogue(content):
     conn = connect_to_db()
     if conn:
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO dialogue (dialogueSummary) VALUES (%s)", (content,))
+            cursor.execute("INSERT INTO dialogue (dialogueSummary, userid) VALUES (%s, %s)", (content,st.session_state.userid))
             #获取该记录id
             cursor.execute("SELECT LAST_INSERT_ID()")
             dialogueId = cursor.fetchone()[0]
@@ -34,25 +66,12 @@ def save_dialogue(content):
             conn.close()
         return dialogueId
 
-def update_message(diaid):
+def save_message(role, content, dialogue_id):
     conn = connect_to_db()
     if conn:
         cursor = conn.cursor()
         try:
-            cursor.execute("UPDATE messages SET DialogueId=%s WHERE DialogueId=0", (diaid,))
-            conn.commit()
-        except MySQLError as err:
-            st.error(f"消息更新失败: {err}")
-        finally:
-            cursor.close()
-            conn.close()
-
-def save_message(role, content):
-    conn = connect_to_db()
-    if conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute("INSERT INTO messages (ChatRole, ChatContent) VALUES (%s, %s)", (role, content))
+            cursor.execute("INSERT INTO messages (ChatRole, ChatContent, userid, DialogueID) VALUES (%s, %s, %s, %s)", (role, content, st.session_state.userid, dialogue_id))
             conn.commit()
         except MySQLError as err:
             st.error(f"消息保存失败: {err}")
@@ -60,22 +79,7 @@ def save_message(role, content):
             cursor.close()
             conn.close()
 
-def load_messages():
-    conn = connect_to_db()
-    if conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT ChatRole, ChatContent, ChatId, DialogueId FROM messages ORDER BY timestamp ASC")
-            messages = cursor.fetchall()
-            return [{"role": role, "content": content, "id": id, "did": did} for role, content, id, did in messages]
-        except MySQLError as err:
-            st.error(f"消息加载失败: {err}")
-            return []
-        finally:
-            cursor.close()
-            conn.close()
-    return []
-    
+
 llm=DeepSeekLLM()
 #ChatOpenAI(model="gpt-4o-mini")
 
@@ -106,12 +110,18 @@ def chat_coach(question,code):
     return response
 
 # 初始化 session_state
+if "dialogue_id" not in st.session_state:
+    st.session_state.dialogue_id = get_latest_dialogue()  # 获取最新对话 ID
+
+if "messages" not in st.session_state:
+    if st.session_state.dialogue_id:
+        st.session_state.messages = load_messages(st.session_state.dialogue_id)  # 加载最新对话的消息
+    else:
+        st.session_state.messages = []
+
+# 初始化 session_state
 if "code" not in st.session_state:
     st.session_state["code"] = ""
-
-# 初始化 session_state 从数据库获取历史数据
-if "messages" not in st.session_state:
-    st.session_state.messages = load_messages()
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
@@ -120,7 +130,7 @@ for message in st.session_state.messages:
 user_input = st.chat_input(placeholder='请输入提问内容')
 if user_input:
     st.chat_message('human').write(user_input)
-    save_message("user", user_input)
+    save_message("user", user_input, st.session_state.dialogue_id)
     st.session_state.messages.append({"role": "user", "content": user_input, 'id': len(st.session_state.messages),"did":0})
     
     with st.chat_message('ai'):
@@ -131,7 +141,7 @@ if user_input:
         code=st.session_state["code"]
         response = chat_coach(user_input, code)
         st.write(response)
-        save_message("assistant",response)
+        save_message("assistant",response,st.session_state.dialogue_id)
         st.session_state.messages.append({"role": "assistant", "content": response, 'id': len(st.session_state.messages), 'did': 0})
 
 if st.button("开启新一轮对话"):
@@ -153,7 +163,11 @@ if st.button("开启新一轮对话"):
     dialogueContent=summary_memory.load_memory_variables({"max_length": 200}) # 从数据库加载历史数据
     dialogueContentStr=str(dialogueContent)
 
-    dialogueId=save_dialogue(dialogueContentStr)
-    update_message(dialogueId)
-    conv_memory.clear()
+    # 创建新对话
+    new_dialogue_id = save_dialogue(dialogueContentStr)
+    if new_dialogue_id:
+        st.session_state.dialogue_id = new_dialogue_id  # 更新当前对话 ID
+        st.session_state.messages = []  # 清空消息历史
+        conv_memory.clear()  # 清空对话链
+    
 
