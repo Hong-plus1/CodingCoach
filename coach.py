@@ -8,10 +8,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-search = DuckDuckGoSearchAPIWrapper()
-def search_tool(query: str) -> str:
-    """搜索相关资源,提供搜索摘要及网址链接"""
-    return search.run(query)
+# search = DuckDuckGoSearchAPIWrapper()
+# def search_tool(query: str) -> str:
+#     """搜索相关资源,提供搜索摘要及网址链接"""
+#     return search.run(query)
 
 deepseek_llm = DeepSeekLLM()
 
