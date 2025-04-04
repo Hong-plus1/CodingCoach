@@ -31,6 +31,7 @@ def login():
     if st.button("Login"):
         if authenticate_user(username, password):
             st.session_state.logged_in = True
+            st.session_state.userid=username
             st.success("登录成功!")
             time.sleep(0.5)
             st.rerun()
@@ -40,4 +41,5 @@ def login():
 def logout():
     if st.button("Logout"):
         st.session_state.logged_in = False
+        st.session_state.userid=None
         st.rerun()
