@@ -6,6 +6,9 @@ from langchain.output_parsers import CommaSeparatedListOutputParser
 from DeepSeekLLM import DeepSeekLLM
 from langchain.prompts import PromptTemplate
 from problemCollection import collectionAdded
+from langchain_core.runnables import RunnableLambda
+from QwenCoderLLM import QWENCoderLLM
+from langchain_core.output_parsers import JsonOutputParser
 from Evaluate import save_final_evaluation
 from dotenv import load_dotenv
 from codeEdit import codeEdit
@@ -17,13 +20,51 @@ template_problem = """请扮演一位资深的编程教练，您将负责为学�
         2. 确定与该知识点相关的一个经典编程题型，包括但不限于算法、数据结构、系统设计等方面。
         3. 为经典题型提供简要描述，确保描述清晰易懂。
         4. 输出的内容应包括题目名称、题目描述、输入输出要求及示例。
-        5. 根据学生的回答代码进行分析，对编程水平进行加减，主要是针对本题目涉及的算法进行评分，细节上的错误仅做提示，并针对代码提出建议。
-        6. 确保提供的建议不包括具体代码。"""
-prompt_problem = ChatPromptTemplate.from_messages([("system", template_problem),
+        5. 确保提供的建议不包括具体代码。"""
+prompt_problem = ChatPromptTemplate.from_messages([("system", template_problem), 
                                                    ("human", "{input}")])
 model_problem = DeepSeekLLM()
-#ChatOpenAI(model="gpt-4o-mini")  #deepseek-ai/DeepSeek-V3
 chain_problem = prompt_problem | model_problem | StrOutputParser()
+
+# 验证提示词（要求返回结构化反馈）
+validation_prompt = ChatPromptTemplate.from_template("""
+请验证以下内容是否符合要求：
+要求: {validation_rules}
+内容: {input}
+
+请返回JSON格式,包含字段:
+- valid (bool): 是否通过
+- feedback (str): 修改建议（如果未通过）
+""")
+Valid_LLM = QWENCoderLLM()
+# 验证链
+validation_chain = validation_prompt | Valid_LLM | JsonOutputParser() 
+def generate_with_feedback(input_data, max_retries=3):
+    validation_rules = "1. 描述清晰,包含清晰的输入输出示例 2. 符合学生编程水平 3.严格围绕指出的知识点 4.不给出答案 5.保证题目无逻辑漏洞" 
+    
+    for attempt in range(max_retries):
+        # 生成内容
+        generated = chain_problem.invoke(input_data)
+        
+        # 验证内容
+        validation_result = validation_chain.invoke({
+            "input": generated,
+            "validation_rules": validation_rules
+        })
+        
+        if validation_result["valid"]:
+            return generated  # 验证通过
+        
+        # 验证失败时，将反馈意见加入新提示词
+        feedback = validation_result.get("feedback", "")
+        input_data = f"{input_data}\n(上次生成未通过验证,反馈意见: {feedback})"
+    
+    raise ValueError(f"无法生成符合要求的内容（已尝试{max_retries}次）")
+
+# 最终链
+chain = RunnableLambda(lambda x: generate_with_feedback(x)) | StrOutputParser()
+
+###################
 
 @st.fragment
 def problem_generate():
@@ -32,7 +73,7 @@ def problem_generate():
         input = st.text_input(label='输入知识点和学生编程水平')
         submit_button = st.form_submit_button(label='生成题目')
         if submit_button:
-             problem=chain_problem.invoke(input)
+             problem=chain.invoke(input)
              st.session_state['problem'] = problem 
              st.rerun(scope="fragment")
      if 'problem' in st.session_state:
@@ -50,8 +91,8 @@ template_evaluation = """请扮演一位资深的编程教练，您将负责评�
 prompt_evaluation = ChatPromptTemplate.from_messages([("system", template_evaluation),
                                                       ("human", "{code}")])
 model_evaluation = DeepSeekLLM()
-#ChatOpenAI(model="gpt-3.5-turbo")
 chain_evaluation = prompt_evaluation | model_evaluation | StrOutputParser()
+
 
 output_parser = CommaSeparatedListOutputParser()
 instructions = output_parser.get_format_instructions()
@@ -94,7 +135,7 @@ def exercise():
     # 添加问题生成模块
     problem_generate()
     # 添加代码编辑模块
-    st.write("<span style='font-size:28px; font-weight:bold;'>代码编辑器</span>", unsafe_allow_html=True)
+    st.write("<span style='font-size:28px; font-weight:bold;'>代码编辑器</span>", unsafe_allow_html=True) 
     st.session_state["code"]= st_ace(language='python', theme='monokai', key='editor')
     code=st.session_state["code"]
     codeEdit(code)
