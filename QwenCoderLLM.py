@@ -9,8 +9,8 @@ load_dotenv()
 # 自定义 DeepSeek LLM 类
 class QWENCoderLLM(LLM):
     model_name: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
-    api_key: str = os.getenv("QWEN_API_KEY")
-    base_url: str = os.getenv("QWEN_API_URL")
+    api_key: str = os.getenv("DEEPSEEK_API_KEY")
+    base_url: str = os.getenv("DEEPSEEK_API_URL")
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         headers = {
@@ -48,8 +48,8 @@ class QWENCoderLLM(LLM):
 
 class GLMLLM(LLM):
     model_name: str = "THUDM/glm-4-9b-chat"
-    api_key: str = os.getenv("QWEN_API_KEY")
-    base_url: str = os.getenv("QWEN_API_URL")
+    api_key: str = os.getenv("DEEPSEEK_API_KEY")
+    base_url: str = os.getenv("SEEPSEEK_API_URL")
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         headers = {
