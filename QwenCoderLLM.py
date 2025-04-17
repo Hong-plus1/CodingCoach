@@ -49,7 +49,7 @@ class QWENCoderLLM(LLM):
 class GLMLLM(LLM):
     model_name: str = "THUDM/glm-4-9b-chat"
     api_key: str = os.getenv("DEEPSEEK_API_KEY")
-    base_url: str = os.getenv("SEEPSEEK_API_URL")
+    base_url: str = os.getenv("DEEPSEEK_API_URL")
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         headers = {
