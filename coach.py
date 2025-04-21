@@ -110,8 +110,8 @@ def generate_answer(question):
 
 def is_valid_answer(answer):
     """验证生成的答案是否符合要求"""
-    # 检查答案长度是否超过200字
-    if len(answer) > 200:
+    # 检查答案长度是否超过300字
+    if len(answer) > 300:
         return False
     return True
 # ================== 创建对话链 ==================
