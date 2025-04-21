@@ -56,7 +56,6 @@ def login():
                 st.session_state.logged_in = True
                 st.session_state.userid=username
                 st.success("登录成功!")
-                time.sleep(0.5)
                 st.rerun()
             else:
                 st.error("用户名或密码错误")
@@ -67,8 +66,7 @@ def login():
 
 def logout():
     if st.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.userid=None
+        st.session_state.clear()
         st.rerun()
 
 def register():
