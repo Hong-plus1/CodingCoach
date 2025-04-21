@@ -26,45 +26,45 @@ prompt_problem = ChatPromptTemplate.from_messages([("system", template_problem),
 model_problem = DeepSeekLLM()
 chain_problem = prompt_problem | model_problem | StrOutputParser()
 
-# 验证提示词（要求返回结构化反馈）
-validation_prompt = ChatPromptTemplate.from_template("""
-请验证以下内容是否符合要求：
-要求: {validation_rules}
-内容: {input}
+# # 验证提示词（要求返回结构化反馈）
+# validation_prompt = ChatPromptTemplate.from_template("""
+# 请验证以下内容是否符合要求：
+# 要求: {validation_rules}
+# 内容: {input}
 
-请返回JSON格式,包含字段:
-- valid (bool): 是否通过
-- feedback (str): 修改建议（如果未通过）
-""")
-Valid_LLM = QWENCoderLLM()
-# 验证链
-validation_chain = validation_prompt | Valid_LLM | JsonOutputParser() 
-def generate_with_feedback(input_data, max_retries=3):
-    validation_rules = "1. 描述清晰,包含清晰的输入输出示例 2. 符合学生编程水平 3.严格围绕指出的知识点 4.不给出答案 5.保证题目无逻辑漏洞" 
+# 请返回JSON格式,包含字段:
+# - valid (bool): 是否通过
+# - feedback (str): 修改建议（如果未通过）
+# """)
+# Valid_LLM = QWENCoderLLM()
+# # 验证链
+# validation_chain = validation_prompt | Valid_LLM | JsonOutputParser() 
+# def generate_with_feedback(input_data, max_retries=3):
+#     validation_rules = "1. 描述清晰,包含清晰的输入输出示例 2. 符合学生编程水平 3.严格围绕指出的知识点 4.不给出答案 5.保证题目无逻辑漏洞" 
     
-    for attempt in range(max_retries):
-        # 生成内容
-        generated = chain_problem.invoke(input_data)
+#     for attempt in range(max_retries):
+#         # 生成内容
+#         generated = chain_problem.invoke(input_data)
         
-        # 验证内容
-        validation_result = validation_chain.invoke({
-            "input": generated,
-            "validation_rules": validation_rules
-        })
+#         # 验证内容
+#         validation_result = validation_chain.invoke({
+#             "input": generated,
+#             "validation_rules": validation_rules
+#         })
         
-        if validation_result["valid"]:
-            return generated  # 验证通过
+#         if validation_result["valid"]:
+#             return generated  # 验证通过
         
-        # 验证失败时，将反馈意见加入新提示词
-        feedback = validation_result.get("feedback", "")
-        input_data = f"{input_data}\n(上次生成未通过验证,反馈意见: {feedback})"
+#         # 验证失败时，将反馈意见加入新提示词
+#         feedback = validation_result.get("feedback", "")
+#         input_data = f"{input_data}\n(上次生成未通过验证,反馈意见: {feedback})"
     
-    raise ValueError(f"无法生成符合要求的内容（已尝试{max_retries}次）")
+#     raise ValueError(f"无法生成符合要求的内容（已尝试{max_retries}次）")
 
-# 最终链
-chain = RunnableLambda(lambda x: generate_with_feedback(x)) | StrOutputParser()
+# # 最终链
+# chain = RunnableLambda(lambda x: generate_with_feedback(x)) | StrOutputParser()
 
-###################
+# ###################
 
 @st.fragment
 def problem_generate():
@@ -73,7 +73,8 @@ def problem_generate():
         input = st.text_input(label='输入知识点和学生编程水平')
         submit_button = st.form_submit_button(label='生成题目')
         if submit_button:
-             problem=chain.invoke(input)
+             #problem=chain.invoke(input)
+             problem=chain_problem.invoke(input)
              st.session_state['problem'] = problem 
              st.rerun(scope="fragment")
      if 'problem' in st.session_state:
