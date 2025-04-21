@@ -1,18 +1,17 @@
 import streamlit as st
 from DeepSeekLLM import DeepSeekLLM
+from QwenCoderLLM import GLMLLM
 from langchain.schema import HumanMessage, AIMessage
 from langchain.prompts import (ChatPromptTemplate, PromptTemplate)
 from langchain_core.output_parsers import StrOutputParser
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
-from langchain.output_parsers import CommaSeparatedListOutputParser
 #from langchain.utilities import DuckDuckGoSearchAPIWrapper
 #from langchain.chat_models import ChatOpenAI
-from QwenCoderLLM import GLMLLM
 import re
+from coachDatabase import (load_dialogue_rounds, save_dialogue_round)
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
-import os
 from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
@@ -48,7 +47,7 @@ def generate_learning_options(memory):
     )
     options_chain = prompt_template | deepseek_llm | option_parser #CommaSeparatedListOutputParser() 
     options = options_chain.invoke({"conversation_history": conversation_history}).values()
-    print(options)
+
     return options
 
 # ============== 生成思考问题 ==============
@@ -116,12 +115,7 @@ def is_valid_answer(answer):
         return False
     return True
 # ================== 创建对话链 ==================
-# 定义全局变量history
-history = InMemoryChatMessageHistory()
 
-def get_history():
-    # 只返回最近几条历史信息
-    return InMemoryChatMessageHistory(messages=history.messages[-3:])
 def wrapped_chain(user_input):
     # 定义对话提示模板
     prompt = ChatPromptTemplate.from_messages(
@@ -140,14 +134,25 @@ def wrapped_chain(user_input):
     # 包裹链以管理会话历史
     wrapped_chain = RunnableWithMessageHistory(
         chain,
-        get_history,  # 只使用近几条历史回答信息
-        history_messages_key="chat_history",
+        lambda:history, # 使用全局 history 变量
         streaming=False,
     )
     
     result= wrapped_chain.invoke({"input": user_input})
-    print("result",result)
     return result
+
+# ================== 转换轮次 ==================    
+def switch_round(round_number):
+    st.session_state.current_round = round_number
+    st.session_state.lead_messages = st.session_state.dialogue_rounds[round_number]
+    # 更新history为当前轮次的近三条记录
+    global history 
+    history = InMemoryChatMessageHistory(
+        messages=[
+            HumanMessage(content=msg["content"]) if msg["role"] == "user" else AIMessage(content=msg["content"])
+            for msg in st.session_state.lead_messages[-3:]
+        ]
+    )
 
 # ============== Streamlit界面 ==============
 # 使用Streamlit显示结果
@@ -169,10 +174,43 @@ if "show_buttons" not in st.session_state:  # 控制按钮显示
 if "options" not in st.session_state:  # 控制按钮显示
     st.session_state.options = None
 
-# 显示对话历史
+# 初始化对话轮次
+if "dialogue_rounds" not in st.session_state:
+    st.session_state.dialogue_rounds = load_dialogue_rounds(user_id=st.session_state.userid)
+    
+if "current_round" not in st.session_state:
+    st.session_state.current_round = max(st.session_state.dialogue_rounds.keys(), default=1)
+
+
+# 初始化 history 为当前轮次的最近三条记录
+if st.session_state.dialogue_rounds!={}:
+    history = InMemoryChatMessageHistory(
+        messages=[
+            HumanMessage(content=msg["content"]) if msg["role"] == "user" else AIMessage(content=msg["content"])
+            for msg in st.session_state.dialogue_rounds[st.session_state.current_round][-3:]
+        ]
+    )
+else:
+    history = InMemoryChatMessageHistory(messages=[])
+
+st.sidebar.write("对话轮次")
+for round_number in sorted(st.session_state.dialogue_rounds.keys()):
+        if st.sidebar.button(f"切换到轮次 {round_number}", key=f"round_{round_number}"):
+            switch_round(round_number)
+
+# 开启新轮次
+if st.sidebar.button("开启新轮次"):
+    st.session_state.current_round = max(st.session_state.dialogue_rounds.keys(), default=1)+1
+    st.session_state.lead_messages = []
+    st.session_state.options = None
+    st.session_state.thinking_question = None
+    st.session_state.thinking_answer = None
+    history.clear()
+    st.session_state.dialogue_rounds[st.session_state.current_round] = []
+
 for message in st.session_state.lead_messages:
     with st.chat_message(message["role"]):
-        st.write(message["content"])  
+        st.write(message["content"])
 
 user_input = st.chat_input(placeholder='你想了解什么编程知识？')
 if st.session_state.option:
@@ -186,12 +224,20 @@ if user_input:
     # 保存用户输入到会话历史中
     st.session_state.lead_messages.append({"role": "user", "content": user_input})
     with st.chat_message('assistant'):
-        print("user_input",user_input)
         result = wrapped_chain(user_input)
         history.add_message(AIMessage(content=result))
         st.write(result)
     st.session_state.lead_messages.append({"role": "assistant", "content": result})
-    # 当前轮次对话完成，显示按钮
+    # 保存当前轮次的状态
+    st.session_state.dialogue_rounds[st.session_state.current_round] = []
+
+    save_dialogue_round(
+        user_id=st.session_state.userid,  # 替换为实际用户 ID
+        round_number=st.session_state.current_round,
+        messages=st.session_state.lead_messages
+    )
+    ########################################
+    st.session_state.dialogue_rounds[st.session_state.current_round] = st.session_state.lead_messages.copy()
     st.session_state.show_buttons = True
 
 def handle_option_click(option):
@@ -202,23 +248,21 @@ def handle_option_click(option):
 def learning_options_section():
     st.write("你是否想了解:")
     st.session_state.options = generate_learning_options(history)
-
+    
     cols=st.columns(3)
     for col,option in zip(cols, st.session_state.options):
         with col:
             st.button(option, on_click=handle_option_click, args=(option,))
-    #cols = st.columns(len(st.session_state.options))  # 创建列以水平排列选项按钮
-    # for col, option in zip(cols, st.session_state.options):
-    #     with col:
-    #         st.button(option.value, on_click=handle_option_click, args=(option,))
-# 思考卡片             
+   
+
+# 思考卡片部分
 @st.fragment
 def thinking_section():
     submitted = st.form_submit_button("停下来思考")
     if submitted:
         st.session_state.thinking_question = generate_thinking_question(history)
         st.write(st.session_state.thinking_question)
-        with st.expander("显示答案"):      
+        with st.expander("显示答案"):
             st.session_state.thinking_answer = generate_answer(st.session_state.thinking_question)
             st.write(st.session_state.thinking_answer)
 
