@@ -164,7 +164,7 @@ def FavCollection():
                 st.text_area(f"题目 {i + 1}", value=problem[0], height=None, key=f"favorite_problem_{problem[3]}_{i}")
                 st.text_area(f"批注 {i + 1}", value=problem[1], key=f"favorite_annotation_{problem[3]}_{i}")
                 st.text_area(f"知识点 {i + 1}", value=problem[2], key=f"knowledge_point_{problem[3]}_{i}")
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 with col1:
                     if st.button(f"更新题目 {knowid}_{i + 1}"):
                         update_problem(problem[3], st.session_state[f"favorite_problem_{problem[3]}_{i}"], st.session_state.get(f"favorite_annotation_{problem[3]}_{i}", ""), st.session_state.get(f"knowledge_point_{problem[3]}_{i}", ""))
@@ -174,16 +174,12 @@ def FavCollection():
                     if st.button(f"取消编辑 {knowid}_{i + 1}"):
                         st.session_state[f"edit_mode_{i}"] = False
                         st.rerun()
-                with col3:
-                    if st.button(f"再次练习 {i + 1}"):
-                        st.session_state['problem'] = problem[0]
-                        st.rerun()
 
             else:
                 st.info(problem[0])
                 st.write(f"批注 {i + 1}:")
                 st.info(problem[1])
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     if st.button(f"编辑题目 {knowid}_{i + 1}"):
                         st.session_state[f"edit_mode_{i}"] = True
@@ -191,6 +187,10 @@ def FavCollection():
                 with col2:
                     if st.button(f"删除题目 {knowid}_{i + 1}"):
                         delete_problem(problem[3])
+                        st.rerun()
+                with col3:
+                    if st.button(f"再次练习 {knowid}_{i + 1}"):
+                        st.session_state['problem'] = problem[0]
                         st.rerun()
 
 def addKnowledgePoint():
