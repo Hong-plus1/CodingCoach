@@ -12,75 +12,94 @@ from langchain_core.output_parsers import JsonOutputParser
 from Evaluate import save_final_evaluation
 from dotenv import load_dotenv
 from codeEdit import codeEdit
+from concurrent.futures import ThreadPoolExecutor
 load_dotenv()
 
 # 生成题目
-template_problem = """请扮演一位资深的编程教练，您将负责为学生生成程算法题目，确保题目符合学生编程水平。
-        1. 根据学生提供的知识点以及学生的编程水平满分为100，分析其相关性和难度。
-        2. 确定与该知识点相关的一个经典编程题型，包括但不限于算法、数据结构、系统设计等方面。
-        3. 为经典题型提供简要描述，确保描述清晰易懂。
-        4. 输出的内容应包括题目名称、题目描述、输入输出要求及示例。
-        5. 确保提供的建议不包括具体代码。"""
+
+
+template_problem = """
+请扮演一位资深的编程教练，根据学生的编程水平{level}生成适合的编程题目。具体要求如下：
+
+1. 根据学生的编程水平，确定相应的编程题目类型,必要时可给出挖空的代码框架。
+    初级: 生成基础题目，注重概念理解和简单实现。
+    中级: 生成中等难度题目，注重算法逻辑和数据结构的应用。
+    高级: 生成高难度题目，注重综合性和创新性。,
+
+2. 根据学生输入的知识点,分析其相关性和难度。
+
+4. 输出的内容应包括题目名称、题目描述、输入输出要求及示例。
+
+5. 确保提供的建议不包括具体代码。
+"""
+
 prompt_problem = ChatPromptTemplate.from_messages([("system", template_problem), 
                                                    ("human", "{input}")])
 model_problem = DeepSeekLLM()
 chain_problem = prompt_problem | model_problem | StrOutputParser()
 
-# # 验证提示词（要求返回结构化反馈）
-# validation_prompt = ChatPromptTemplate.from_template("""
-# 请验证以下内容是否符合要求：
-# 要求: {validation_rules}
-# 内容: {input}
+# 验证提示词（要求返回结构化反馈）
+validation_prompt = ChatPromptTemplate.from_template("""
+请验证以下内容是否符合要求：
+要求: {validation_rules}
+内容: {input}
 
-# 请返回JSON格式,包含字段:
-# - valid (bool): 是否通过
-# - feedback (str): 修改建议（如果未通过）
-# """)
-# Valid_LLM = QWENCoderLLM()
-# # 验证链
-# validation_chain = validation_prompt | Valid_LLM | JsonOutputParser() 
-# def generate_with_feedback(input_data, max_retries=3):
-#     validation_rules = "1. 描述清晰,包含清晰的输入输出示例 2. 符合学生编程水平 3.严格围绕指出的知识点 4.不给出答案 5.保证题目无逻辑漏洞" 
+请返回JSON格式,包含字段:
+- valid (bool): 是否通过
+- feedback (str): 修改建议（如果未通过）
+""")
+
+Valid_LLM = QWENCoderLLM()
+# 验证链
+validation_chain = validation_prompt | Valid_LLM | JsonOutputParser() 
+def generate_with_feedback(input_data, level, max_retries=3):
+    validation_rules = "1.确保不出现完整代码 2.严格围绕指出的知识点 3.保证题目无逻辑漏洞 4.题目描述清晰" 
     
-#     for attempt in range(max_retries):
-#         # 生成内容
-#         generated = chain_problem.invoke(input_data)
+    for attempt in range(max_retries):
+        with ThreadPoolExecutor() as executor:
+            # 生成内容
+            generated = chain_problem.invoke({"level": level, "input": input_data})
+            
+            # 验证内容
+            validation_result = validation_chain.invoke({
+                "input": generated,
+                "validation_rules": validation_rules
+            })
         
-#         # 验证内容
-#         validation_result = validation_chain.invoke({
-#             "input": generated,
-#             "validation_rules": validation_rules
-#         })
+        if validation_result["valid"]:
+            return generated  # 验证通过
         
-#         if validation_result["valid"]:
-#             return generated  # 验证通过
-        
-#         # 验证失败时，将反馈意见加入新提示词
-#         feedback = validation_result.get("feedback", "")
-#         input_data = f"{input_data}\n(上次生成未通过验证,反馈意见: {feedback})"
+        # 验证失败时，将反馈意见加入新提示词
+        feedback = validation_result.get("feedback", "")
+        input_data = f"{input_data}\n(上次生成未通过验证,反馈意见: {feedback})"
     
-#     raise ValueError(f"无法生成符合要求的内容（已尝试{max_retries}次）")
+    raise ValueError(f"无法生成符合要求的内容（已尝试{max_retries}次）")
 
-# # 最终链
-# chain = RunnableLambda(lambda x: generate_with_feedback(x)) | StrOutputParser()
+# 最终链
+chain = RunnableLambda(lambda x: generate_with_feedback(x["input"], x["level"])) | StrOutputParser()
 
-# ###################
+###################
 
 @st.fragment
 def problem_generate():
      st.write("<span style='font-size:28px; font-weight:bold;'>生成题目</span>", unsafe_allow_html=True)
      with st.form(key='my_form'):
-        input = st.text_input(label='输入知识点和学生编程水平')
+        # Streamlit表单示例
+        level = st.radio("您的编程水平", 
+                        options=["初级", "中级", "高级"],
+                        index=1)
+        input = st.text_input(label='输入希望练习的知识点')
         submit_button = st.form_submit_button(label='生成题目')
         if submit_button:
-             #problem=chain.invoke(input)
-             problem=chain_problem.invoke(input)
+             #problem=chain_problem.invoke(level,input)
+             problem=chain.invoke({"level":level,"input":input})
              st.session_state['problem'] = problem 
              st.rerun(scope="fragment")
      if 'problem' in st.session_state:
          st.info(st.session_state['problem'])
          collectionAdded('problem')
-         
+
+    
 
 template_evaluation = """请扮演一位资深的编程教练，您将负责评估有关问题{problem}，学生的程序代码是否正确。
         1. 仔细阅读学生提供的代码，检查其功能和实现逻辑，是否符合题目要求。
@@ -139,6 +158,6 @@ def exercise():
     st.write("<span style='font-size:28px; font-weight:bold;'>代码编辑器</span>", unsafe_allow_html=True) 
     st.session_state["code"]= st_ace(language='python', theme='monokai', key='editor')
     code=st.session_state["code"]
-    codeEdit(code)
+    #codeEdit(code)
     # 添加代码评估模块
     code_evaluate(code) 
